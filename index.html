@@ -176,7 +176,6 @@ const nebula=(()=>{const S=200,k=mk(S,S),g=k.getContext('2d'),im=g.createImageDa
     d[o]=v*(110+m*130)*.75;d[o+1]=v*(14+m*36)*.75;d[o+2]=v*(140-m*40)*.75;d[o+3]=255}
   g.putImageData(im,0,0);return k})();
 
-
 // ---------- Auto quality ----------
 // tiers: 0 = low, 1 = mid, 2 = high.  Starts from device hints, then measures real frame rate and steps down (or back up) by itself.
 const QT=[
@@ -394,20 +393,19 @@ function drawDeco(cx,cy,ck,ct,st,front){
     const sc2=w.f*PK*ky,ww=w.sp.width*sc2,hh=w.sp.height*sc2;
     ctx.globalAlpha=al*dep()*(.35+.2*Math.sin(time*.6+w.p));ctx.drawImage(w.sp,PX-ww/2,PY-hh/2,ww,hh)}
   ctx.globalAlpha=1;
-}
-
-// ---------- State ----------
+   }
+   // ---------- State ----------
 let cyFrac=.5,yaw=0,yawV=0,drag=null,closing=false,phase='bow',t0=0,popT=0,time=0,D=3300,tilt=.3,hSpeed=260,pAlpha=0,gAlpha=0,last=performance.now(),NOW=0;
 let zoom=1,zoomT=1,focus=null,lastTap=null,hFade=1,pull=null,arrow=null,snap=null,balloon=true,punch=1,pGrow=0;
 const ZMIN=.6,ZMAX=1.8,FD=reduce?.05:.6,lerp=(a,b,t)=>a+(b-a)*t;
 const ease=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2,WARP=6000;
 
 // ---------- Balloons (3 of them) ----------
-// t = text lines on the balloon, fx/fy = position (fraction of screen), k = size, c = [highlight, mid, shadow] colours
+// (the words shown on pop are in POP_WORDS, in the order the balloons get popped)
 const BAL=[
-  {t:['Hellow'],  fx:.24,fy:.40,k:1.00,c:['#ffd0e4','#ff3f8e','#8a0c4f'],ph:0},
-  {t:['sino'],    fx:.50,fy:.54,k:1.10,c:['#e6d0ff','#9d5cff','#43138a'],ph:2.1},
-  {t:['ka man'],  fx:.76,fy:.38,k:.96, c:['#ffe5c2','#ff9462','#a8381a'],ph:4.2}
+  {  fx:.24,fy:.40,k:1.00,c:['#ffd0e4','#ff3f8e','#8a0c4f'],ph:0},
+  {    fx:.50,fy:.54,k:1.10,c:['#e6d0ff','#9d5cff','#43138a'],ph:2.1},
+  {  fx:.76,fy:.38,k:.96, c:['#ffe5c2','#ff9462','#a8381a'],ph:4.2}
 ];
 BAL.forEach((b,i)=>{b.i=i;b.alive=true;b.wob=0;b.cx=b.cy=-999;
   b.glow=radial(256,[[0,rgba(hx(b.c[1]),.5)],[.5,rgba(hx(b.c[2]),.14)],[1,'rgba(0,0,0,0)']])});
@@ -416,7 +414,7 @@ function bpos(b){
   b.cx=b.x+Math.sin(time*.55+b.ph)*(8+b.i*2);
   b.cy=b.y+Math.sin(time*.9+b.ph*1.3)*11;
 }
-let shards=[],pops=[],glit=[],bowAng=-Math.PI/2,reloadAt=0;
+let popWords=[],shards=[],pops=[],glit=[],bowAng=-Math.PI/2,reloadAt=0;
 
 // ---------- Sound effects (synthesised live — no audio files needed) ----------
 let AC=null,SFX=null,NB=null;
@@ -475,6 +473,8 @@ function popSfx(i,final){
   tone(t,'sine',330*p,140,.16,.18,.004);                              // round low pop
   if(final)[523,784].forEach((f,j)=>tone(t+.15+j*.18,'sine',f,f,1.4,.055,.05));   // two quiet bell tones
 }
+// two soft heartbeat thumps for the "Bang" heart
+function heartSfx(){if(!audio())return;const t=AC.currentTime+.12;tone(t,'sine',95,55,.18,.2,.01);tone(t+.2,'sine',85,50,.22,.16,.01)}
 function reloadSfx(){}
 function missSfx(){}
 
@@ -535,12 +535,17 @@ function burstBalloon(b,final){
   pops.push({x,y,t:0,r:b.r,c,glow:b.glow});
   if(final)spawnConf(x,y,130,CONF,780);else spawnConf(x,y,44,[c[0],c[1],'#ffffff','#ffd166'],560);
 }
+const POP_WORDS=['Na','Para','Bang'];   // shown in this exact order, whichever balloon is popped first/second/last
+const WORD_LIFE=1.6;                    // seconds each of the first words stays before fading away
+const POP_HOLD=1000;   // ms the Bang heart shows before the warp starts (the warp then flies through it)
 function hitBalloon(b){
   b.alive=false;arrow=null;
   const left=BAL.filter(q=>q.alive).length,final=left===0;
-  burstBalloon(b,final);popSfx(BAL.length-left-1,final);
+  const wi=BAL.length-left-1;
+  popWords.push({text:POP_WORDS[wi]||'',heart:final,life:final?0:WORD_LIFE,x:b.cx,y:b.cy,fx:b.cx,fy:b.cy,r:b.r,c:b.c,glow:b.glow,t:0,ph:b.ph});
+  burstBalloon(b,final);popSfx(wi,final);if(final)heartSfx();
   BAL.forEach(q=>{if(q.alive)q.wob=1});
-  if(final){phase='pop';popT=NOW;playBgm();balloon=false;flashA=1;ring={x:b.cx,y:b.cy,r:0};$('intro').classList.add('gone')}
+  if(final){phase='pop';popT=NOW;playBgm();balloon=false;flashA=1;ring={x:W/2,y:H/2,r:0};setTimeout(()=>spawnConf(W/2,H/2,50,['#ff9ecb','#ff4d94','#ffffff','#ffd1e6'],420),650);$('intro').classList.add('gone')}
   else{reloadAt=time+.15;setTimeout(reloadSfx,350);setMsg(left===1?'Last one!':left+' left — keep going')}
 }
 
@@ -548,7 +553,7 @@ function frame(now){
   qMon(now);NOW=now;const dt=Math.min(.05,(now-last)/1000);last=now;
   time+=reduce?dt*.4:dt;
   if(phase==='bow')updateArrow(dt);creakTick(dt);
-  if(phase==='pop'&&now-popT>350){phase='warp';t0=now}
+  if(phase==='pop'&&now-popT>POP_HOLD){phase='warp';t0=now;popWords=popWords.filter(w=>w.heart)}
   if(phase==='warp'){
     const u=Math.min(1,(now-t0)/WARP),P1=.10,P2=.40,eo=x=>1-Math.pow(1-x,3),DS=3300+450,DM=DE*1.35,SPIN=16;
     if(u<P1){ // slight push back
@@ -570,9 +575,8 @@ function frame(now){
     if(f.dir<0&&f.t<=0){focus=null}}
   if(!drag||!drag.moved){yaw+=yawV;yawV*=.95}
   draw(dt);requestAnimationFrame(frame);
-}
-
-function draw(dt){
+   }
+   function draw(dt){
   const ct=Math.cos(tilt),st=Math.sin(tilt);
   ctx.setTransform(DPR,0,0,DPR,0,0);
   ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
@@ -687,7 +691,7 @@ function draw(dt){
   if(phase==='bow')drawBalloons(dt);
   const bowA=phase==='bow'?1:phase==='pop'?Math.max(0,1-(NOW-popT)/500):0;
   if(bowA>0){ctx.globalAlpha=bowA;drawBow(dt);ctx.globalAlpha=1}
-  drawFX(dt);
+  drawWords(dt);drawFX(dt);
   ctx.setTransform(DPR,0,0,DPR,0,0);ctx.globalAlpha=1;ctx.drawImage(vig,0,0);
 }
 
@@ -753,16 +757,12 @@ function drawBalloon(b,dt){
   // knot
   const kg=ctx.createLinearGradient(-8,0,8,0);kg.addColorStop(0,c[2]);kg.addColorStop(.45,c[1]);kg.addColorStop(1,c[2]);
   ctx.fillStyle=kg;ctx.beginPath();ctx.moveTo(0,ry-2);ctx.quadraticCurveTo(-9,ry+5,-7,ry+13);ctx.lineTo(7,ry+13);ctx.quadraticCurveTo(9,ry+5,0,ry-2);ctx.fill();
-  // text
-  const n=b.t.length,fs=Math.round(r*(n>1?.27:.36));
-  ctx.font=`italic 600 ${fs}px ${SERIF}`;ctx.textAlign='center';ctx.textBaseline='middle';
-  b.t.forEach((t,i)=>{const yy=-ry*.06+(i-(n-1)/2)*fs*1.05;ctx.fillStyle='rgba(60,0,40,.35)';ctx.fillText(t,1.5,yy+2);ctx.fillStyle='rgba(255,255,255,.96)';ctx.fillText(t,0,yy)});
   // twinkle
   const tk=.5+.5*Math.sin(time*3+b.ph*2),ts=r*.5*(.5+tk*.6);
   ctx.globalCompositeOperation='lighter';ctx.globalAlpha=.4+.6*tk;ctx.drawImage(sparkSp,rx*.5-ts/2,-ry*.62-ts/2,ts,ts);
   ctx.restore();ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
-}
-// cupid arrow: wooden shaft, pink feathers, heart-shaped head
+   }
+   // cupid arrow: wooden shaft, pink feathers, heart-shaped head
 function arrowShape(px,py,tx,ty){
   const dx=tx-px,dy=ty-py,l=Math.hypot(dx,dy)||1,ux=dx/l,uy=dy/l,nx=-uy,ny=ux;
   ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
@@ -847,6 +847,56 @@ function drawBow(dt){
     ctx.globalAlpha=ga*be*rl;arrowShape(px+dx*sh,py+dy*sh,px+dx*(TIP+sh),py+dy*(TIP+sh))}
   ctx.restore();
 }
+const HGLOW=radial(256,[[0,'rgba(255,90,160,.6)'],[.5,'rgba(255,40,120,.2)'],[1,'rgba(0,0,0,0)']]);
+const WFONT='"Playfair Display",Georgia,"Times New Roman",serif';
+// words revealed by the popped balloons. "Bang" flies to the middle of the screen inside a beating heart,
+// then the warp starts while it is still there: the heart swells up and fades as you fly through it.
+function drawWords(dt){
+  if(!popWords.length)return;
+  if(phase==='explore'){popWords.length=0;return}
+  const fade=phase==='pop'?clamp((popT+POP_HOLD-NOW)/450,0,1):1;
+  for(const w of popWords){
+    w.t+=dt;
+    if(w.life&&w.t>w.life){w.dead=true;continue}
+    let boost=1,fa=1,ra=1;
+    if(w.heart&&phase==='warp'){
+      const wu=(NOW-t0)/WARP;if(wu>.42){w.dead=true;continue}
+      const g=clamp((wu-.03)/.37,0,1);boost=1+Math.pow(g,2.2)*22;fa=1-clamp(g/.6,0,1);ra=1-clamp((g-.3)/.65,0,1)}
+    const u=clamp(w.t/.55,0,1),k=u-1,sc=1+2.70158*k*k*k+1.70158*k*k,a=Math.min(1,w.t/.18)*(w.heart?1:fade)*(w.life?clamp((w.life-w.t)/.45,0,1):1);
+    if(a<=0)continue;
+    const r=w.r;let x=w.x,y=w.y-Math.min(1,w.t/1.2)*r*.12+Math.sin(time*1.4+w.ph)*5;
+    if(w.heart){const m=1-Math.pow(1-clamp(w.t/.7,0,1),3);x=w.fx+(W/2-w.fx)*m;y=w.fy+(H/2-w.fy)*m+Math.sin(time*1.6)*3}
+    ctx.save();ctx.translate(x,y);ctx.textAlign='center';ctx.textBaseline='middle';
+    if(w.heart){
+      const S=clamp(Math.min(W,H)*.22,72,150),beat=1+.09*Math.pow(Math.max(0,Math.sin(time*4.4)),6);
+      ctx.scale(sc*beat*boost,sc*beat*boost);
+      ctx.globalCompositeOperation='lighter';ctx.globalAlpha=a*.85*fa*fa;const gs=S*4.4;ctx.drawImage(HGLOW,-gs/2,-gs/2,gs,gs);
+      ctx.globalCompositeOperation='source-over';
+      for(let i=0;i<3;i++){const q=(w.t-.5-i*.22)/1;if(q<=0||q>=1)continue;      // expanding heart-shaped ripples
+        const z=S*(1+q*1.6);ctx.save();ctx.scale(z,z);ctx.globalAlpha=a*(1-q)*.8*ra;ctx.lineWidth=3/z;ctx.strokeStyle='#ff9ecb';ctx.stroke(HEART);ctx.restore()}
+      for(let i=0;i<6;i++){const an=time*.9+i*Math.PI/3,rr=S*(1.5+.08*Math.sin(time*2+i)),q=S*.3*(.7+.3*Math.sin(time*3+i*2));   // little hearts orbiting
+        ctx.globalAlpha=a*.85*ra;ctx.drawImage(heartSp[i%5],Math.cos(an)*rr-q/2,Math.sin(an)*rr*.82-q/2,q,q)}
+      ctx.save();ctx.scale(S,S);
+      ctx.globalAlpha=a*fa;ctx.shadowColor='rgba(255,60,140,.95)';ctx.shadowBlur=30;
+      const hg=ctx.createRadialGradient(-.3,-.45,.08,0,0,1.35);hg.addColorStop(0,'#ffc6de');hg.addColorStop(.42,'#ff4d94');hg.addColorStop(1,'#a80f56');
+      ctx.fillStyle=hg;ctx.fill(HEART);ctx.shadowBlur=0;
+      ctx.save();ctx.translate(-.48,-.5);ctx.rotate(-.6);ctx.fillStyle='rgba(255,255,255,.5)';ctx.beginPath();ctx.ellipse(0,0,.26,.12,0,0,7);ctx.fill();ctx.restore();
+      ctx.globalAlpha=a*ra;ctx.lineWidth=.035;ctx.strokeStyle='rgba(255,225,240,.8)';ctx.stroke(HEART);
+      ctx.restore();
+      ctx.font=`700 ${S*.6}px ${WFONT}`;ctx.shadowColor='rgba(120,0,50,.65)';ctx.shadowBlur=8;ctx.fillStyle='#fff';ctx.globalAlpha=a*fa;ctx.fillText(w.text,0,-S*.04);
+      if(!reduce&&phase!=='warp'&&Math.random()<dt*14)glit.push({x:x+rnd(-S,S),y:y+rnd(-.3*S,.5*S),vx:rnd(-20,20),vy:rnd(-110,-60),t:0,life:rnd(1,1.6),s:rnd(9,16),h:true,c:(Math.random()*5)|0});
+    }else{
+      const fs=clamp(r*.72,26,64);ctx.scale(sc,sc);
+      ctx.globalCompositeOperation='lighter';ctx.globalAlpha=a*.55;const gs=r*3;ctx.drawImage(w.glow,-gs/2,-gs/2,gs,gs);
+      ctx.globalCompositeOperation='source-over';ctx.globalAlpha=a;
+      ctx.font=`700 ${fs}px ${WFONT}`;ctx.shadowColor=rgba(hx(w.c[1]),.95);ctx.shadowBlur=22;ctx.fillStyle='#fff';ctx.fillText(w.text,0,0);
+      ctx.shadowBlur=0;const g=ctx.createLinearGradient(0,-fs*.5,0,fs*.5);g.addColorStop(0,'#fff');g.addColorStop(1,w.c[0]);ctx.fillStyle=g;ctx.fillText(w.text,0,0);
+    }
+    ctx.restore();
+  }
+  for(let i=popWords.length-1;i>=0;i--)if(popWords[i].dead)popWords.splice(i,1);
+  ctx.globalAlpha=1;
+}
 function drawParticles(dt){
   for(let i=glit.length-1;i>=0;i--){const g=glit[i];g.t+=dt;if(g.t>g.life){glit.splice(i,1);continue}
     g.x+=g.vx*dt;g.y+=g.vy*dt;g.vy+=60*dt;const u=g.t/g.life,q=g.s*(1-u*.6)*(g.h?1.6:2.4);
@@ -886,9 +936,8 @@ function drawFX(dt){
     else{ctx.fillStyle=c.c;ctx.scale(1,Math.cos(c.t*8+c.rot));ctx.fillRect(-c.w/2,-c.h/2,c.w,c.h)}
     ctx.restore()}
   ctx.globalAlpha=1;
-}
-
-function drawPlanet(p){if(focus&&focus.p===p)return;drawPlanetAt(p,p.sx,p.sy,p.sr,pAlpha*p.shade,pAlpha*p.shade,false)}
+   }
+   function drawPlanet(p){if(focus&&focus.p===p)return;drawPlanetAt(p,p.sx,p.sy,p.sr,pAlpha*p.shade,pAlpha*p.shade,false)}
 function drawPlanetAt(p,x,y,r,al,la,big){
   const spr=planetSprite(p,big?3:1),q=r*4;
   ctx.globalAlpha=al;
