@@ -442,7 +442,7 @@ let AC=null,SFX=null,NB=null;
 function audio(){
   if(!AC){try{
     AC=new(window.AudioContext||window.webkitAudioContext)();
-    SFX=AC.createGain();SFX.gain.value=.6;const cp=AC.createDynamicsCompressor();SFX.connect(cp);cp.connect(AC.destination);
+    SFX=AC.createGain();SFX.gain.value=1;const cp=AC.createDynamicsCompressor();SFX.connect(cp);cp.connect(AC.destination);
     NB=AC.createBuffer(1,AC.sampleRate,AC.sampleRate);const d=NB.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
   }catch(e){AC=null}}
   if(AC&&AC.state==='suspended')AC.resume().catch(()=>{});
