@@ -399,7 +399,7 @@ function drawDeco(cx,cy,ck,ct,st,front){
 // ---------- State ----------
 let cyFrac=.5,yaw=0,yawV=0,drag=null,closing=false,phase='bow',t0=0,popT=0,time=0,D=3300,tilt=.3,hSpeed=260,pAlpha=0,gAlpha=0,last=performance.now(),NOW=0;
 let zoom=1,zoomT=1,focus=null,lastTap=null,hFade=1,pull=null,arrow=null,snap=null,balloon=true,punch=1,pGrow=0;
-const ZMIN=.6,ZMAX=1.8,FD=reduce?.05:1.05,lerp=(a,b,t)=>a+(b-a)*t;
+const ZMIN=.6,ZMAX=1.8,FD=reduce?.05:.6,lerp=(a,b,t)=>a+(b-a)*t;
 const ease=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2,WARP=6000;
 
 // ---------- Balloons (3 of them) ----------
