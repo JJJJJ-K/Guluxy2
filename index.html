@@ -295,35 +295,64 @@ const coreGlow=radial(128,[[0,'rgba(255,140,170,.9)'],[.4,'rgba(255,50,110,.5)']
 const PAL=[['#ffc2d6','#c2386f'],['#ff8cc6','#8e1b66'],['#ffb3d9','#a82a73'],['#ff9ec4','#b3205f'],['#ffd1e3','#d9558f'],['#f7a1d8','#8a2a8a'],['#ffeef6','#c78aa8'],['#ff7aa8','#7a1236']];
 const hx=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
 const rgba=(c,a)=>`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;
-function planetSprite(p,S=1){
-  const sk=S>1?'sprB':'spr',kk=S>1?'keyB':'key',key=p.data.icon+'|'+p.data.col+'|'+p.data.ring+'|'+S;
-  if(p[kk]===key)return p[sk];
-  p[kk]=key;const Z=160*S,h=Z/2,r=40*S,TS=80*S,hs=TS/2,k=p[sk]=mk(Z,Z),g=k.getContext('2d'),pal=PAL[p.data.col%PAL.length],c0=hx(pal[0]),c1=hx(pal[1]),sd=p.r*.173,rc=c0.map(v=>v+(255-v)*.55);
-  // soft atmosphere halo tinted by the planet
-  const gl=g.createRadialGradient(h,h,r*.85,h,h,h);gl.addColorStop(0,rgba(c0,.38));gl.addColorStop(.45,rgba(c1,.14));gl.addColorStop(1,rgba(c1,0));
-  g.fillStyle=gl;g.fillRect(0,0,Z,Z);
-  const ring=front=>{for(const[m,w,a]of[[1.5,5,.35],[1.62,3,.7],[1.78,4,.5],[1.9,2,.3]]){
-    g.strokeStyle=rgba(rc,a*(front?1:.7));g.lineWidth=w*S;g.beginPath();g.ellipse(h,h,r*m,r*m*.28,-.35,front?0:Math.PI,front?Math.PI:Math.PI*2);g.stroke()}};
-  if(p.data.ring)ring(false);
-  // procedural surface: bands + fbm clouds wrapped on a sphere
-  const T=mk(TS,TS),tg=T.getContext('2d'),im=tg.createImageData(TS,TS),d=im.data;
+// per-size lookup: for every pixel of the disc, where it sits in longitude (so a texture strip can be slid across the sphere)
+const SMAPS={};
+function sphereMap(S){
+  if(SMAPS[S])return SMAPS[S];
+  const TS=80*S,hs=TS/2,TW=Math.round(6.2832*hs),lx=new Float32Array(TS*TS),al=new Uint8Array(TS*TS);
   for(let y=0;y<TS;y++)for(let x=0;x<TS;x++){
-    const nx=(x+.5-hs)/hs,ny=(y+.5-hs)/hs,q=nx*nx+ny*ny;if(q>=1)continue;
-    const u=Math.atan2(nx,Math.sqrt(1-q))+sd,n=fbm(u*1.8+sd,ny*2.6+sd*.7),band=Math.sin(ny*7+n*4.5+sd)*.5+.5,
-      m=clamp(band*.5+n*.7-.12,0,1),hi=Math.max(0,n-.62)*2.2,o=(y*TS+x)*4;
-    for(let c=0;c<3;c++)d[o+c]=clamp(c1[c]+(c0[c]-c1[c])*m+hi*90,0,255);
-    d[o+3]=Math.min(1,(1-Math.sqrt(q))*16)*255}
-  tg.putImageData(im,0,0);
-  g.save();g.beginPath();g.arc(h,h,r,0,7);g.clip();g.drawImage(T,h-hs,h-hs);
-  if(p.data.icon){g.globalAlpha=.85;g.font=`${32*S}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(p.data.icon,h,h+2*S);g.globalAlpha=1}
-  const sh=g.createRadialGradient(h-r*.45,h-r*.5,r*.1,h,h,r*1.08);
-  sh.addColorStop(0,'rgba(255,240,250,.22)');sh.addColorStop(.5,'rgba(0,0,0,0)');sh.addColorStop(1,'rgba(12,0,30,.7)');
-  g.fillStyle=sh;g.fillRect(0,0,Z,Z);
-  const rim=g.createRadialGradient(h,h,r*.72,h,h,r);rim.addColorStop(0,rgba(c0,0));rim.addColorStop(1,rgba(c0,.32));
+    const nx=(x+.5-hs)/hs,ny=(y+.5-hs)/hs,q=nx*nx+ny*ny,i=y*TS+x;if(q>=1)continue;
+    lx[i]=Math.atan2(nx,Math.sqrt(1-q))/6.2832*TW+TW/2;al[i]=Math.min(1,(1-Math.sqrt(q))*16)*255}
+  return SMAPS[S]={TS,hs,TW,lx,al};
+}
+function planetSprite(p,S=1){
+  const rk=S>1?'rsB':'rs',key=p.data.icon+'|'+p.data.col+'|'+p.data.ring+'|'+S;
+  let r=p[rk];
+  if(!r||r.key!==key){
+    const m=sphereMap(S),{TS,hs,TW}=m,Z=160*S,h=Z/2,rad=40*S,pal=PAL[p.data.col%PAL.length],c0=hx(pal[0]),c1=hx(pal[1]),sd=p.r*.173,rc=c0.map(v=>v+(255-v)*.55);
+    const ring=(g,front)=>{for(const[mm,w,a]of[[1.5,5,.35],[1.62,3,.7],[1.78,4,.5],[1.9,2,.3]]){
+      g.strokeStyle=rgba(rc,a*(front?1:.7));g.lineWidth=w*S;g.beginPath();g.ellipse(h,h,rad*mm,rad*mm*.28,-.35,front?0:Math.PI,front?Math.PI:Math.PI*2);g.stroke()}};
+    // static back layer: atmosphere halo + back half of the ring
+    const back=mk(Z,Z),bg=back.getContext('2d'),gl=bg.createRadialGradient(h,h,rad*.85,h,h,h);
+    gl.addColorStop(0,rgba(c0,.38));gl.addColorStop(.45,rgba(c1,.14));gl.addColorStop(1,rgba(c1,0));
+    bg.fillStyle=gl;bg.fillRect(0,0,Z,Z);if(p.data.ring)ring(bg,false);
+    let front=null;if(p.data.ring){front=mk(Z,Z);ring(front.getContext('2d'),true)}
+    // seamless wrap-around surface strip (bands + fbm clouds), built once; the icon is stamped on it twice (opposite sides)
+    const tc=mk(TW,TS),tg=tc.getContext('2d'),im=tg.createImageData(TW,TS),d=im.data,yo=3.2+(sd*.7)%3;
+    for(let y=0;y<TS;y++){const ny=(y+.5-hs)/hs;
+      for(let x=0;x<TW;x++){
+        const n=pfbm(x/TW*11+sd,ny*2.6+yo,11),band=Math.sin(ny*7+n*4.5+sd)*.5+.5,mm=clamp(band*.5+n*.7-.12,0,1),hi=Math.max(0,n-.62)*2.2,o=(y*TW+x)*4;
+        for(let c=0;c<3;c++)d[o+c]=clamp(c1[c]+(c0[c]-c1[c])*mm+hi*90,0,255);
+        d[o+3]=255}}
+    tg.putImageData(im,0,0);
+    if(p.data.icon){tg.globalAlpha=.85;tg.font=`${32*S}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;tg.textAlign='center';tg.textBaseline='middle';
+      for(const ex of[TW/2,0,TW])tg.fillText(p.data.icon,ex,hs+2*S);for(const ex of[TW*.75,TW*.25])tg.fillText(p.data.icon,ex,hs+2*S);tg.globalAlpha=1}
+    const tex=tg.getImageData(0,0,TW,TS).data,surf=mk(TS,TS),sg=surf.getContext('2d'),img=sg.createImageData(TS,TS),out=mk(Z,Z);
+    r=p[rk]={key,m,Z,h,rad,c0,back,front,tex,surf,sg,img,out,og:out.getContext('2d'),sh:-99};
+  }
+  // slide the surface strip around the sphere: each planet spins at its own pace
+  const {m}=r,{TS,hs,TW,lx,al}=m,u=(p.rot0+time*p.spin)/6.2832,sh=((u%1)+1)%1*TW;
+  if(Math.abs(sh-r.sh)<.25)return r.out;
+  r.sh=sh;
+  const o=r.img.data,tex=r.tex;
+  for(let y=0;y<TS;y++){const ro=y*TW;
+    for(let x=0;x<TS;x++){
+      const i=y*TS+x,j=i*4,a=al[i];if(!a){o[j+3]=0;continue}
+      let fx=lx[i]+sh;if(fx>=TW)fx-=TW;
+      const x0=fx|0,f=fx-x0,x1=x0+1>=TW?0:x0+1,a0=(ro+x0)*4,a1=(ro+x1)*4;
+      o[j]=tex[a0]+(tex[a1]-tex[a0])*f;o[j+1]=tex[a0+1]+(tex[a1+1]-tex[a0+1])*f;o[j+2]=tex[a0+2]+(tex[a1+2]-tex[a0+2])*f;o[j+3]=a}}
+  r.sg.putImageData(r.img,0,0);
+  const g=r.og,{Z,h,rad,c0}=r;
+  g.clearRect(0,0,Z,Z);g.drawImage(r.back,0,0);
+  g.save();g.beginPath();g.arc(h,h,rad,0,7);g.clip();g.drawImage(r.surf,h-hs,h-hs);
+  const shd=g.createRadialGradient(h-rad*.45,h-rad*.5,rad*.1,h,h,rad*1.08);
+  shd.addColorStop(0,'rgba(255,240,250,.22)');shd.addColorStop(.5,'rgba(0,0,0,0)');shd.addColorStop(1,'rgba(12,0,30,.7)');
+  g.fillStyle=shd;g.fillRect(0,0,Z,Z);
+  const rim=g.createRadialGradient(h,h,rad*.72,h,h,rad);rim.addColorStop(0,rgba(c0,0));rim.addColorStop(1,rgba(c0,.32));
   g.globalCompositeOperation='lighter';g.fillStyle=rim;g.fillRect(0,0,Z,Z);g.globalCompositeOperation='source-over';
   g.restore();
-  if(p.data.ring)ring(true);
-  return k;
+  if(r.front)g.drawImage(r.front,0,0);
+  return r.out;
 }
 
 // ---------- Planets ----------
@@ -350,7 +379,8 @@ const planets = PLANETS.map((d, i) => ({
   a0: [0, 2, 1, 3, 0, 2][i] * Math.PI / 2
       - (70 + i * 32) * WIND,
   w: WV(70 + i * 32), size: [22, 16, 24, 18, 23, 17][i],
-  shade: 1, data: d, sx: 0, sy: 0, sr: 0, d: 0,key: '',spr: null}));
+  shade: 1, data: d, sx: 0, sy: 0, sr: 0, d: 0,key: '',spr: null,
+  spin: [.32,-.26,.38,.29,-.35,.42][i], rot0: i * 1.7}));
 
 
 // ---------- Hearts / streaks / shooting stars / confetti ----------
